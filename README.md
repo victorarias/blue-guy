@@ -1,45 +1,60 @@
-# blue-guy
+<p align="center">
+  <img src="banner.png" alt="blue-guy banner" width="700" />
+</p>
 
-Mob programming tool that shares a live workspace between machines using a FUSE virtual filesystem.
+<h1 align="center">blue-guy</h1>
 
-The host serves real files over gRPC. Clients mount a virtual filesystem that proxies all reads and writes to the host. Changes auto-commit to a `mob/session-*` git branch.
+<p align="center">
+  <em>The dumber, simpler sibling of <a href="https://github.com/epidemicsound/doctor-manhattan">doctor-manhattan</a>.</em><br/>
+  Mob programming without the infrastructure headache.
+</p>
+
+---
+
+You know that glowing blue guy from Watchmen? He could teleport, manipulate matter, exist in multiple places at once. **This is not that.** This is his little brother who just learned to share files over a network and got really excited about it.
+
+`blue-guy` is a peer-to-peer mob programming tool. One machine hosts, others mount. No central server. No database. No Kubernetes. Just a FUSE virtual filesystem, some gRPC, and git doing its thing in the background.
+
+Where [doctor-manhattan](https://github.com/epidemicsound/doctor-manhattan) is building toward a proper central server with advanced features and evolved architecture, `blue-guy` takes the opposite bet: **what's the simplest thing that could possibly work?**
+
+## How it looks
 
 ```
   Host Machine                         Client Machine(s)
-  ┌─────────────────────┐              ┌──────────────────────┐
-  │  Real filesystem     │              │  FUSE mount          │
-  │  /path/to/project    │              │  ~/mob/project-name  │
-  │       │              │              │       │              │
-  │  fsnotify watcher    │◄── gRPC ────►│  remotefs (proxy)    │
-  │       │              │  (bidi       │                      │
-  │  git auto-commit     │  streaming)  │                      │
-  │  & push to mob/*     │              │                      │
-  └─────────────────────┘              └──────────────────────┘
+  +---------------------+              +----------------------+
+  |  Real filesystem     |              |  FUSE mount          |
+  |  /path/to/project    |              |  ~/mob/project-name  |
+  |       |              |              |       |              |
+  |  fsnotify watcher    |<--- gRPC --->|  remotefs (proxy)    |
+  |       |              |  (bidi       |                      |
+  |  git auto-commit     |  streaming)  |                      |
+  |  & push to mob/*     |              |                      |
+  +---------------------+              +----------------------+
 ```
 
-AI agents interact via standard file read/write. The sync layer is invisible to them.
+Host serves real files over gRPC. Clients mount a FUSE filesystem that proxies reads and writes. Changes auto-commit to a `mob/session-*` branch. AI agents, editors, terminals -- they all just see normal files. The sync layer is invisible.
 
 ## Quick start
 
 ```bash
-# On the host machine — start sharing the current directory
+# On the host -- share current directory
 blue-guy
 # > Session: abc123 | Branch: mob/session-abc123
 # > Listening on 0.0.0.0:7654
 # > Join with: blue-guy --connect <YOUR_IP>
 
-# On a client machine — join and get a FUSE mount
+# On a client -- join and get a live mount
 blue-guy --connect 192.168.1.42
 # > Mounted workspace at ~/mob/192.168.1.42
 # > Ready. All changes sync to host.
 ```
 
-Files you edit on the client appear on the host. Files edited on the host appear on the client. Git auto-commits every 5 seconds of quiet.
+Edit on the client, it shows up on the host. Edit on the host, it shows up on the client. Git quietly commits every 5 seconds of silence. That's it. That's the tool.
 
 ## Build
 
 ```bash
-# Host-only (no FUSE dependency)
+# Host-only (no FUSE dependency, just go build)
 make build
 
 # Full build with FUSE client support
@@ -48,15 +63,26 @@ make build
 make build-fuse
 ```
 
+## The philosophy
+
+| | doctor-manhattan | blue-guy |
+|---|---|---|
+| Architecture | Central server | Peer-to-peer |
+| Locking | Smart conflict resolution | Last-writer-wins (lol) |
+| Infrastructure | Proper | `go build` and vibes |
+| Ambition | The future of agentic mobbing | Files go brrr |
+
+Both are valid. Sometimes you need the sophisticated approach. Sometimes you just need files to show up on the other machine.
+
 ## How it works
 
-**Host mode** (default): starts a gRPC server that serves files from the current directory, watches for changes with fsnotify, and auto-commits to a `mob/session-<id>` branch.
+**Host mode** (default) -- starts a gRPC server, watches files with fsnotify, auto-commits to `mob/session-<id>`. Hit Ctrl+C and it does a final commit, restores your branch. Clean.
 
-**Client mode** (`--connect`): connects to a host via gRPC and mounts a FUSE filesystem. All filesystem operations (read, write, mkdir, rename, etc.) are proxied to the host.
+**Client mode** (`--connect`) -- connects via gRPC, mounts FUSE at `~/mob/<host>`. Every open, read, write, mkdir, rename goes over the wire. Your editor doesn't know. Your terminal doesn't know. Nobody knows.
 
-**Git integration**: on startup, creates a `mob/session-<id>` branch. File changes trigger debounced auto-commits (5s quiet period). On shutdown (Ctrl+C), performs a final commit and restores the original branch.
+**Git** -- creates a mob branch on startup, debounced auto-commits (5s quiet), best-effort push. On shutdown, one last commit and back to your original branch.
 
-**No locking**: last-writer-wins, same as NFS/SSHFS. Simple and works well for mob programming where participants communicate out-of-band.
+**Concurrency model** -- there isn't one. Last write wins. Same as NFS, same as SSHFS. Talk to each other like humans (or agents, we don't judge).
 
 ## Project structure
 
@@ -64,8 +90,8 @@ make build-fuse
 cmd/blue-guy/          CLI entry point, host/client dispatch
 internal/
   host/
-    fileserver.go      gRPC FileService (Stat, ReadFile, WriteFile, ReadDir, ...)
-    watcher.go         Recursive fsnotify + push-based change broadcasting
+    fileserver.go      gRPC FileService (Stat, ReadFile, WriteFile, ...)
+    watcher.go         Recursive fsnotify + change broadcasting
     host.go            Host orchestrator
   client/
     remotefs.go        FUSE filesystem proxying ops via gRPC
@@ -82,7 +108,7 @@ proto/blueguy.proto    gRPC service definition
 - FUSE (client mode only):
   - macOS: [FUSE-T](https://github.com/macos-fuse-t/fuse-t) (`brew install fuse-t`)
   - Linux: `libfuse-dev` + `fuse3`
-- git (for auto-commit)
+- git
 - protoc + protoc-gen-go + protoc-gen-go-grpc (only if regenerating proto)
 
 ## License
