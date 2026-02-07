@@ -1,43 +1,29 @@
 version: 2
 
 builds:
-  # Host-only build (no FUSE dependency, works everywhere)
-  - id: blue-guy-host
+  - id: blue-guy
     main: ./cmd/blue-guy
     binary: blue-guy
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
     goos:
       - linux
       - darwin
     goarch:
       - amd64
       - arm64
-
-  # Full build with FUSE support (requires FUSE headers at build time)
-  - id: blue-guy-fuse
-    main: ./cmd/blue-guy
-    binary: blue-guy-fuse
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
 
 archives:
-  - id: host
+  - id: default
     builds:
-      - blue-guy-host
+      - blue-guy
     format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
-
-  - id: fuse
-    builds:
-      - blue-guy-fuse
-    format: tar.gz
-    name_template: "{{ .ProjectName }}-fuse_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -48,3 +34,20 @@ changelog:
     exclude:
       - "^docs:"
       - "^chore:"
+
+brews:
+  - name: blue-guy
+    repository:
+      owner: victorarias
+      name: homebrew-blue-guy
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/victorarias/blue-guy
+    description: Peer-to-peer mob programming tool with FUSE virtual filesystem
+    license: MIT
+    dependencies:
+      - name: fuse-t
+    install: |
+      bin.install "blue-guy"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/blue-guy -version").strip

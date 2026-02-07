@@ -5,15 +5,17 @@ BUILD_DIR := bin
 GO := go
 PROTO_DIR := proto
 GEN_DIR := internal/proto/gen
+VERSION ?= dev
+LDFLAGS := -X main.version=$(VERSION)
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build host-only binary (no FUSE dependency)
-	CGO_ENABLED=0 $(GO) build -o $(BUILD_DIR)/$(BINARY) ./cmd/blue-guy
+	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/blue-guy
 
 build-fuse: ## Build with FUSE support (requires fuse-t: brew install fuse-t)
-	CGO_ENABLED=1 $(GO) build -o $(BUILD_DIR)/$(BINARY) ./cmd/blue-guy
+	CGO_ENABLED=1 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/blue-guy
 
 run: build ## Build and run in host mode
 	./$(BUILD_DIR)/$(BINARY)

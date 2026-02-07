@@ -51,10 +51,26 @@ blue-guy --connect 192.168.1.42
 
 Edit on the client, it shows up on the host. Edit on the host, it shows up on the client. Git quietly commits every 5 seconds of silence. That's it. That's the tool.
 
-## Build
+## Install
+
+### Homebrew (macOS — recommended)
 
 ```bash
-# Host-only (no FUSE dependency, just go build)
+brew install victorarias/blue-guy/blue-guy
+```
+
+This installs the binary and FUSE-T automatically.
+
+### Binary download
+
+Grab the latest release from [GitHub Releases](https://github.com/victorarias/blue-guy/releases). You'll need FUSE installed separately for client mode:
+- macOS: `brew install fuse-t`
+- Linux: `apt install libfuse-dev fuse3`
+
+### Build from source
+
+```bash
+# Host-only (no FUSE dependency)
 make build
 
 # Full build with FUSE client support
