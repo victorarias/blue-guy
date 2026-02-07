@@ -5,7 +5,7 @@
 <h1 align="center">blue-guy</h1>
 
 <p align="center">
-  <em>The dumber, simpler sibling of <a href="https://github.com/epidemicsound/doctor-manhattan">doctor-manhattan</a>.</em><br/>
+  <em>The dumber, simpler sibling of doctor-manhattan.</em><br/>
   Mob programming without the infrastructure headache.
 </p>
 
@@ -15,7 +15,7 @@ You know that glowing blue guy from Watchmen? He could teleport, manipulate matt
 
 `blue-guy` is a peer-to-peer mob programming tool. One machine hosts, others mount. No central server. No database. No Kubernetes. Just a FUSE virtual filesystem, some gRPC, and git doing its thing in the background.
 
-Where [doctor-manhattan](https://github.com/epidemicsound/doctor-manhattan) is building toward a proper central server with advanced features and evolved architecture, `blue-guy` takes the opposite bet: **what's the simplest thing that could possibly work?**
+Where doctor-manhattan (a friend's tool tackling the same problem) is building toward a proper central server with advanced features and evolved architecture, `blue-guy` takes the opposite bet: **what's the simplest thing that could possibly work?**
 
 ## How it looks
 
