@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.svu.outputs.tag }}
+      version: ${{ steps.svu.outputs.version }}
       created: ${{ steps.push-tag.outputs.created }}
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +28,7 @@ jobs:
         run: |
           tag=$(svu next)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Check if tag exists
         id: check-tag
@@ -45,14 +47,15 @@ jobs:
           git push origin "${{ steps.svu.outputs.tag }}"
           echo "created=true" >> "$GITHUB_OUTPUT"
 
-  release-darwin:
+  build-darwin:
     needs: tag
     if: needs.tag.outputs.created == 'true'
     runs-on: macos-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -61,31 +64,24 @@ jobs:
       - name: Install FUSE-T headers
         run: brew install fuse-t
 
-      - name: Run GoReleaser (darwin)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --split
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ needs.tag.outputs.tag }}
-          GOOS: darwin
+      - name: Build
+        run: |
+          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-s -w -X main.version=${{ needs.tag.outputs.version }}" \
+            -o blue-guy ./cmd/blue-guy
+          tar czf blue-guy_darwin_${{ matrix.goarch }}.tar.gz blue-guy
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: artifacts-darwin
-          path: dist/**/*
-          retention-days: 1
+          name: blue-guy_darwin_${{ matrix.goarch }}
+          path: blue-guy_darwin_${{ matrix.goarch }}.tar.gz
 
-  release-linux:
+  build-linux:
     needs: tag
     if: needs.tag.outputs.created == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -94,54 +90,88 @@ jobs:
       - name: Install FUSE headers
         run: sudo apt-get update && sudo apt-get install -y libfuse-dev
 
-      - name: Run GoReleaser (linux)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: release --split
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ needs.tag.outputs.tag }}
-          GOOS: linux
+      - name: Build
+        run: |
+          CGO_ENABLED=1 go build \
+            -ldflags "-s -w -X main.version=${{ needs.tag.outputs.version }}" \
+            -o blue-guy ./cmd/blue-guy
+          tar czf blue-guy_linux_amd64.tar.gz blue-guy
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: artifacts-linux
-          path: dist/**/*
-          retention-days: 1
+          name: blue-guy_linux_amd64
+          path: blue-guy_linux_amd64.tar.gz
 
   publish:
-    needs: [tag, release-darwin, release-linux]
+    needs: [tag, build-darwin, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/download-artifact@v4
         with:
-          go-version-file: go.mod
-
-      - name: Download darwin artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: artifacts-darwin
-          path: dist
-
-      - name: Download linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: artifacts-linux
-          path: dist
+          path: artifacts
           merge-multiple: true
 
-      - name: Run GoReleaser (publish)
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: '~> v2'
-          args: continue
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum *.tar.gz > checksums.txt
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ needs.tag.outputs.tag }}" \
+            --title "${{ needs.tag.outputs.tag }}" \
+            --generate-notes \
+            artifacts/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ needs.tag.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew tap
+        env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          darwin_amd64_sha=$(sha256sum artifacts/blue-guy_darwin_amd64.tar.gz | cut -d' ' -f1)
+          darwin_arm64_sha=$(sha256sum artifacts/blue-guy_darwin_arm64.tar.gz | cut -d' ' -f1)
+
+          cat > formula.rb <<FORMULA
+          class BlueGuy < Formula
+            desc "Peer-to-peer mob programming tool with FUSE virtual filesystem"
+            homepage "https://github.com/victorarias/blue-guy"
+            license "MIT"
+            version "${VERSION}"
+
+            depends_on "fuse-t"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/victorarias/blue-guy/releases/download/${TAG}/blue-guy_darwin_arm64.tar.gz"
+                sha256 "${darwin_arm64_sha}"
+              else
+                url "https://github.com/victorarias/blue-guy/releases/download/${TAG}/blue-guy_darwin_amd64.tar.gz"
+                sha256 "${darwin_amd64_sha}"
+              end
+            end
+
+            def install
+              bin.install "blue-guy"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/blue-guy -version").strip
+            end
+          end
+          FORMULA
+
+          # Push formula to tap repo
+          cd "$(mktemp -d)"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/victorarias/homebrew-blue-guy.git" tap
+          cd tap
+          mkdir -p Formula
+          cp "$OLDPWD/formula.rb" Formula/blue-guy.rb
+          git add Formula/blue-guy.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update blue-guy to ${VERSION}"
+          git push
