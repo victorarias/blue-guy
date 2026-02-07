@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package blueguy.v1;
+
+option go_package = "github.com/victorarias/blue-guy/internal/proto/gen";
+
+service FileService {
+  // Filesystem operations
+  rpc Stat(StatRequest) returns (StatResponse);
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  rpc WriteFile(WriteFileRequest) returns (WriteFileResponse);
+  rpc ReadDir(ReadDirRequest) returns (ReadDirResponse);
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Mkdir(MkdirRequest) returns (MkdirResponse);
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  rpc Rename(RenameRequest) returns (RenameResponse);
+  rpc Chmod(ChmodRequest) returns (ChmodResponse);
+  rpc Truncate(TruncateRequest) returns (TruncateResponse);
+
+  // Change streaming for cache invalidation
+  rpc WatchChanges(WatchChangesRequest) returns (stream FileChangeEvent);
+}
+
+// Common types
+
+message FileInfo {
+  string name = 1;
+  int64 size = 2;
+  uint32 mode = 3;       // Unix file mode
+  int64 mod_time_unix = 4; // Unix timestamp (seconds)
+  bool is_dir = 5;
+}
+
+// Stat
+
+message StatRequest {
+  string path = 1; // Relative to workspace root
+}
+
+message StatResponse {
+  FileInfo info = 1;
+}
+
+// ReadFile
+
+message ReadFileRequest {
+  string path = 1;
+  int64 offset = 2;
+  int64 length = 3; // 0 = read entire file, capped at 1MB per response
+}
+
+message ReadFileResponse {
+  bytes data = 1;
+}
+
+// WriteFile
+
+message WriteFileRequest {
+  string path = 1;
+  bytes data = 2;
+  int64 offset = 3;
+  bool truncate = 4; // If true, truncate file to offset + len(data)
+}
+
+message WriteFileResponse {}
+
+// ReadDir
+
+message ReadDirRequest {
+  string path = 1; // Relative to workspace root
+}
+
+message ReadDirResponse {
+  repeated FileInfo entries = 1;
+}
+
+// Create
+
+message CreateRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+message CreateResponse {}
+
+// Mkdir
+
+message MkdirRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+message MkdirResponse {}
+
+// Remove
+
+message RemoveRequest {
+  string path = 1;
+}
+
+message RemoveResponse {}
+
+// Rename
+
+message RenameRequest {
+  string old_path = 1;
+  string new_path = 2;
+}
+
+message RenameResponse {}
+
+// Chmod
+
+message ChmodRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+message ChmodResponse {}
+
+// Truncate
+
+message TruncateRequest {
+  string path = 1;
+  int64 size = 2;
+}
+
+message TruncateResponse {}
+
+// WatchChanges
+
+message WatchChangesRequest {}
+
+enum ChangeType {
+  CHANGE_TYPE_UNSPECIFIED = 0;
+  CHANGE_TYPE_CREATED = 1;
+  CHANGE_TYPE_MODIFIED = 2;
+  CHANGE_TYPE_DELETED = 3;
+  CHANGE_TYPE_RENAMED = 4;
+}
+
+message FileChangeEvent {
+  string path = 1;
+  ChangeType type = 2;
+  string new_path = 3; // Only set for RENAMED
+}

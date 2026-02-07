@@ -1,0 +1,50 @@
+version: 2
+
+builds:
+  # Host-only build (no FUSE dependency, works everywhere)
+  - id: blue-guy-host
+    main: ./cmd/blue-guy
+    binary: blue-guy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  # Full build with FUSE support (requires FUSE headers at build time)
+  - id: blue-guy-fuse
+    main: ./cmd/blue-guy
+    binary: blue-guy-fuse
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: host
+    builds:
+      - blue-guy-host
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: fuse
+    builds:
+      - blue-guy-fuse
+    format: tar.gz
+    name_template: "{{ .ProjectName }}-fuse_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
