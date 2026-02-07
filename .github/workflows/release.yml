@@ -50,14 +50,7 @@ jobs:
   build-darwin:
     needs: tag
     if: needs.tag.outputs.created == 'true'
-    strategy:
-      matrix:
-        include:
-          - goarch: arm64
-            runner: macos-latest
-          - goarch: amd64
-            runner: macos-13
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -66,19 +59,22 @@ jobs:
           go-version-file: go.mod
 
       - name: Install FUSE-T
-        run: brew install fuse-t
+        run: |
+          brew install fuse-t
+          sudo mkdir -p /usr/local/include/fuse
+          sudo cp /Library/Frameworks/fuse_t.framework/Headers/* /usr/local/include/fuse/
 
       - name: Build
         run: |
           CGO_ENABLED=1 go build \
             -ldflags "-s -w -X main.version=${{ needs.tag.outputs.version }}" \
             -o blue-guy ./cmd/blue-guy
-          tar czf blue-guy_darwin_${{ matrix.goarch }}.tar.gz blue-guy
+          tar czf blue-guy_darwin_arm64.tar.gz blue-guy
 
       - uses: actions/upload-artifact@v4
         with:
-          name: blue-guy_darwin_${{ matrix.goarch }}
-          path: blue-guy_darwin_${{ matrix.goarch }}.tar.gz
+          name: blue-guy_darwin_arm64
+          path: blue-guy_darwin_arm64.tar.gz
 
   build-linux:
     needs: tag
@@ -136,7 +132,6 @@ jobs:
           TAG: ${{ needs.tag.outputs.tag }}
           VERSION: ${{ needs.tag.outputs.version }}
         run: |
-          darwin_amd64_sha=$(sha256sum artifacts/blue-guy_darwin_amd64.tar.gz | cut -d' ' -f1)
           darwin_arm64_sha=$(sha256sum artifacts/blue-guy_darwin_arm64.tar.gz | cut -d' ' -f1)
 
           cat > formula.rb <<FORMULA
@@ -146,17 +141,11 @@ jobs:
             license "MIT"
             version "${VERSION}"
 
+            depends_on :macos
             depends_on "fuse-t"
 
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/victorarias/blue-guy/releases/download/${TAG}/blue-guy_darwin_arm64.tar.gz"
-                sha256 "${darwin_arm64_sha}"
-              else
-                url "https://github.com/victorarias/blue-guy/releases/download/${TAG}/blue-guy_darwin_amd64.tar.gz"
-                sha256 "${darwin_amd64_sha}"
-              end
-            end
+            url "https://github.com/victorarias/blue-guy/releases/download/${TAG}/blue-guy_darwin_arm64.tar.gz"
+            sha256 "${darwin_arm64_sha}"
 
             def install
               bin.install "blue-guy"
@@ -169,11 +158,11 @@ jobs:
           FORMULA
 
           # Push formula to tap repo
-          cd "$(mktemp -d)"
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/victorarias/homebrew-blue-guy.git" tap
-          cd tap
-          mkdir -p Formula
-          cp "$OLDPWD/formula.rb" Formula/blue-guy.rb
+          tmp=$(mktemp -d)
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/victorarias/homebrew-blue-guy.git" "$tmp/tap"
+          mkdir -p "$tmp/tap/Formula"
+          cp formula.rb "$tmp/tap/Formula/blue-guy.rb"
+          cd "$tmp/tap"
           git add Formula/blue-guy.rb
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

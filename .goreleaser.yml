@@ -17,6 +17,8 @@ builds:
     ignore:
       - goos: linux
         goarch: arm64
+      - goos: darwin
+        goarch: amd64
 
 archives:
   - id: default
